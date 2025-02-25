@@ -1,0 +1,127 @@
+#include "LSM6DS3.h"
+#include "Wire.h"
+#include <Arduino.h>
+#include <U8x8lib.h>  //Display library
+#include <PCF8563.h>
+#include <SPI.h>  
+#include <SD.h>
+ 
+PCF8563 pcf;
+U8X8_SSD1306_128X64_NONAME_HW_I2C u8x8(/* clock=*/PIN_WIRE_SCL, /*
+data=*/PIN_WIRE_SDA, /* reset=*/U8X8_PIN_NONE);  // OLEDs without Reset of the Display
+//Create a instance of class LSM6DS3
+LSM6DS3 myIMU(I2C_MODE, 0x6A);  //I2C device address 0x6A
+const int chipSelect = 2;
+unsigned long startTime;
+unsigned long endTime;
+ 
+void setup() {
+  // put your setup code here, to run once:
+  Serial.begin(9600);
+  u8x8.begin();
+  pinMode(LEDR, OUTPUT);
+  u8x8.setFlipMode(1);  // set number from 1 to 3, the screen word will rotary 180
+  //  while (!Serial);
+  //Call .begin() to configure the IMUs
+  if (myIMU.begin() != 0) {
+  Serial.println("Device error");
+  } else {
+  Serial.println("Device OK!");
+  }
+  Wire.begin();
+  pcf.init();        
+  //initialize the clock
+  pcf.startClock();  //start the clock
+  if (!SD.begin(chipSelect)) {
+  Serial.println("Card failed, or not present");
+  // don't do anything more:
+  while (1)
+  ;
+  }
+  // Setting up the headers for the stored data!
+  File dataFile = SD.open("HDATA.txt", FILE_WRITE);
+  dataFile.println("\n");
+  dataFile.print("Time");
+  dataFile.print(", ");
+  dataFile.print("Accel_x");
+  dataFile.print(", ");
+  dataFile.print("Accel_y");
+  dataFile.print(", ");
+  dataFile.print("Accel_z");
+  dataFile.print(", ");
+  dataFile.print("Gyr_x");
+  dataFile.print(", ");
+  dataFile.print("Gyr_y");
+  dataFile.print(", ");
+  dataFile.print("Gyr_z");
+  dataFile.print(", ");
+  dataFile.println("Label");
+  // You can add the label here just make sure to only use "println" for the last thing you want to print!
+  dataFile.close();
+}
+ 
+void loop() {
+  Time nowTime = pcf.getTime();  
+  u8x8.setFont(u8x8_font_chroma48medium8_r);
+  u8x8.clear();
+  u8x8.setCursor(0, 0);
+  u8x8.print("Data Collection");
+ 
+  File dataFile = SD.open("HDATA.txt", FILE_WRITE);
+  if (!dataFile) {
+    Serial.println("Failed to open file");
+    return;
+  }
+ 
+  unsigned long startMillis = millis();  // Capture the start time
+ 
+  for (int i = 0; i < 1000; i++) {
+    unsigned long loopStart = millis();  // Track iteration start time
+ 
+    // Read sensor values
+    float accelX = myIMU.readFloatAccelX();
+    float accelY = myIMU.readFloatAccelY();
+    float accelZ = myIMU.readFloatAccelZ();
+    float gyroX = myIMU.readFloatGyroX();
+    float gyroY = myIMU.readFloatGyroY();
+    float gyroZ = myIMU.readFloatGyroZ();
+ 
+    // Print to Serial Monitor
+    Serial.print("Time: ");
+    Serial.print(nowTime.hour); Serial.print(":");
+    Serial.print(nowTime.minute); Serial.print(":");
+    Serial.print(nowTime.second);
+    Serial.print(", Accel_x: "); Serial.print(accelX);
+    Serial.print(", Accel_y: "); Serial.print(accelY);
+    Serial.print(", Accel_z: "); Serial.print(accelZ);
+    Serial.print(", Gyr_x: "); Serial.print(gyroX);
+    Serial.print(", Gyr_y: "); Serial.print(gyroY);
+    Serial.print(", Gyr_z: "); Serial.println(gyroZ);
+ 
+    // Write to SD card
+    dataFile.print(nowTime.hour); dataFile.print(":");
+    dataFile.print(nowTime.minute); dataFile.print(":");
+    dataFile.print(nowTime.second); dataFile.print(", ");
+    dataFile.print(accelX); dataFile.print(", ");
+    dataFile.print(accelY); dataFile.print(", ");
+    dataFile.print(accelZ); dataFile.print(", ");
+    dataFile.print(gyroX); dataFile.print(", ");
+    dataFile.print(gyroY); dataFile.print(", ");
+    dataFile.println(gyroZ);
+ 
+    // Blink LED for feedback
+    digitalWrite(LEDR, HIGH);
+    delay(1);  // Quick blink
+    digitalWrite(LEDR, LOW);
+ 
+    // Ensure exactly 10ms per iteration
+    while (millis() - loopStart < 10);  
+  }
+ 
+  dataFile.close();  // Close file after writing all 1000 samples
+ 
+  unsigned long totalTime = millis() - startMillis;
+  Serial.print("Data collection duration: ");
+  Serial.print(totalTime / 1000.0);
+  Serial.println(" seconds");
+}
